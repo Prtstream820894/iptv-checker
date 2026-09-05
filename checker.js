@@ -1,4 +1,3 @@
-
 const axios = require('axios');
 const fs = require('fs');
 
@@ -17,7 +16,19 @@ function parseM3U(data) {
     for (let line of lines) {
         line = line.trim();
         if (line.startsWith('#EXTINF:')) {
-            currentChannel.rawHeader = line;
+            let header = line;
+            
+            // अगर पहले से group-title है, तो उसे '🌎Worldwide - पुराना नाम' में बदल दें
+            if (header.includes('group-title="')) {
+                header = header.replace(/group-title="([^"]*)"/, (match, groupName) => {
+                    return `group-title="🌎Worldwide - ${groupName}"`;
+                });
+            } else {
+                // अगर group-title नहीं है, तो नया जोड़ दें
+                header = header.replace('#EXTINF:-1', '#EXTINF:-1 group-title="🌎Worldwide"');
+            }
+
+            currentChannel.rawHeader = header;
             const nameMatch = line.match(/,(.+)$/);
             currentChannel.name = nameMatch ? nameMatch[1] : 'Unknown';
         } else if (line && !line.startsWith('#')) {
@@ -32,9 +43,9 @@ function parseM3U(data) {
 async function checkChannel(url) {
     try {
         const response = await axios.get(url, {
-            timeout: 4000,
+            timeout: 2000,
             headers: { 'User-Agent': 'Mozilla/5.0' },
-            maxRedirects: 3
+            maxRedirects: 2
         });
         return response.status >= 200 && response.status < 400;
     } catch (error) {
@@ -50,7 +61,7 @@ async function main() {
     console.log(`कुल ${channels.length} चैनल मिले। चेकिंग शुरू हो रही है...`);
 
     let workingChannels = [];
-    const batchSize = 15;
+    const batchSize = 40; // स्पीड तेज रखने के लिए
 
     for (let i = 0; i < channels.length; i += batchSize) {
         const batch = channels.slice(i, i + batchSize);
@@ -64,8 +75,6 @@ async function main() {
             if (ch) {
                 workingChannels.push(ch);
                 console.log(`[🟢 LIVE]: ${ch.name}`);
-            } else {
-                console.log(`[🔴 DEAD]: skipped`);
             }
         });
     }
@@ -76,7 +85,7 @@ async function main() {
     });
 
     fs.writeFileSync('working.m3u', m3uContent);
-    console.log(`\nकाम पूरा हुआ! कुल ${workingChannels.length} चालू चैनल 'working.m3u' में सेव कर दिए गए हैं।`);
+    console.log(`\nकाम पूरा हुआ! कुल ${workingChannels.length} चालू चैनल सेव हो गए हैं।`);
 }
 
 main();
