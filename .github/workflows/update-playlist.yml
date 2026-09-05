@@ -1,0 +1,32 @@
+name: Update Working IPTV Playlist
+
+on:
+  schedule:
+    - cron: '0 */12 * * *' # हर 12 घंटे में ऑटोमैटिक चलेगा
+  workflow_dispatch: # मैन्युअली चलाने के लिए बटन
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run checker script
+        run: npm start
+
+      - name: Commit and push if working.m3u changed
+        run: |
+          git config --global user.name 'GitHub Action Bot'
+          git config --global user.email 'action@github.com'
+          git add working.m3u
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update working IPTV playlist" && git push)
+          
