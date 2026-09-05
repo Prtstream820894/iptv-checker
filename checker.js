@@ -17,18 +17,25 @@ function parseM3U(data) {
         line = line.trim();
         if (line.startsWith('#EXTINF:')) {
             let header = line;
-            
-            // अगर पहले से group-title है, तो उसे '🌎Worldwide - पुराना नाम' में बदल दें
+            let groupName = 'General';
+
+            // ग्रुप का नाम ढूंढना
+            const groupMatch = header.match(/group-title="([^"]*)"/);
+            if (groupMatch) {
+                groupName = groupMatch[1];
+            }
+
+            // ग्रुप के नाम के आगे 🌎Worldwide जोड़ना
+            const newGroupTitle = `🌎Worldwide - ${groupName}`;
             if (header.includes('group-title="')) {
-                header = header.replace(/group-title="([^"]*)"/, (match, groupName) => {
-                    return `group-title="🌎Worldwide - ${groupName}"`;
-                });
+                header = header.replace(/group-title="([^"]*)"/, `group-title="${newGroupTitle}"`);
             } else {
-                // अगर group-title नहीं है, तो नया जोड़ दें
-                header = header.replace('#EXTINF:-1', '#EXTINF:-1 group-title="🌎Worldwide"');
+                header = header.replace('#EXTINF:-1', `#EXTINF:-1 group-title="${newGroupTitle}"`);
             }
 
             currentChannel.rawHeader = header;
+            currentChannel.group = groupName.toLowerCase();
+            
             const nameMatch = line.match(/,(.+)$/);
             currentChannel.name = nameMatch ? nameMatch[1] : 'Unknown';
         } else if (line && !line.startsWith('#')) {
@@ -61,7 +68,7 @@ async function main() {
     console.log(`कुल ${channels.length} चैनल मिले। चेकिंग शुरू हो रही है...`);
 
     let workingChannels = [];
-    const batchSize = 40; // स्पीड तेज रखने के लिए
+    const batchSize = 40;
 
     for (let i = 0; i < channels.length; i += batchSize) {
         const batch = channels.slice(i, i + batchSize);
@@ -72,20 +79,48 @@ async function main() {
 
         const results = await Promise.all(promises);
         results.forEach(ch => {
-            if (ch) {
-                workingChannels.push(ch);
-                console.log(`[🟢 LIVE]: ${ch.name}`);
-            }
+            if (ch) workingChannels.push(ch);
         });
     }
 
+    // 1. ग्रुप्स के हिसाब से चैनल गिनना ताकि पता चले किसमें 5 से कम हैं
+    const groupCounts = {};
+    workingChannels.forEach(ch => {
+        groupCounts[ch.group] = (groupCounts[ch.group] || 0) + 1;
+    });
+
+    // 2. जिन ग्रुप्स में 5 से कम चैनल हैं, उनका ग्रुप बदलकर 'others' कर देना
+    workingChannels.forEach(ch => {
+        if (groupCounts[ch.group] < 5) {
+            ch.rawHeader = ch.rawHeader.replace(/group-title="[^"]*"/, 'group-title="🌎Worldwide - Others"');
+            ch.group = 'others';
+        }
+    });
+
+    // 3. प्रायोरिटी सेट करना: Entertainment, Movies, Kids, News, Music ऊपर रहेंगे
+    const priorityOrder = ['entertainment', 'movies', 'kids', 'news', 'music'];
+
+    workingChannels.sort((a, b) => {
+        let indexA = priorityOrder.findIndex(p => a.group.includes(p));
+        let indexB = priorityOrder.findIndex(p => b.group.includes(p));
+
+        if (indexA === -1) indexA = 99;
+        if (indexB === -1) indexB = 99;
+
+        if (indexA !== indexB) {
+            return indexA - indexB;
+        }
+        return a.group.localeCompare(b.group);
+    });
+
+    // M3U फाइल तैयार करना
     let m3uContent = '#EXTM3U\n';
     workingChannels.forEach(ch => {
         m3uContent += `${ch.rawHeader}\n${ch.url}\n`;
     });
 
     fs.writeFileSync('working.m3u', m3uContent);
-    console.log(`\nकाम पूरा हुआ! कुल ${workingChannels.length} चालू चैनल सेव हो गए हैं।`);
+    console.log(`\nकाम पूरा हुआ! कुल ${workingChannels.length} चालू चैनल सही क्रम में सेव हो गए हैं।`);
 }
 
 main();
