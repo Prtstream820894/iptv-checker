@@ -19,11 +19,13 @@ function parseM3U(data) {
             let header = line;
             let groupName = 'General';
 
+            // ग्रुप का नाम ढूंढना
             const groupMatch = header.match(/group-title="([^"]*)"/);
             if (groupMatch) {
                 groupName = groupMatch[1];
             }
 
+            // ग्रुप के नाम के आगे 🌎Worldwide जोड़ना
             const newGroupTitle = `🌎Worldwide - ${groupName}`;
             if (header.includes('group-title="')) {
                 header = header.replace(/group-title="([^"]*)"/, `group-title="${newGroupTitle}"`);
@@ -48,29 +50,11 @@ function parseM3U(data) {
 async function checkChannel(url) {
     try {
         const response = await axios.get(url, {
-            timeout: 3000,
-            headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' 
-            },
-            maxRedirects: 3,
-            responseType: 'stream' // Stream format me check karenge taaki heavy data download na ho
+            timeout: 2000,
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            maxRedirects: 2
         });
-
-        // Check if status is success
-        if (response.status < 200 || response.status >= 400) {
-            return false;
-        }
-
-        const contentType = response.headers['content-type'] || '';
-        
-        // Agar response HTML hai (matलब error page ya website khul rahi hai, video stream nahi), toh use reject kar do
-        if (contentType.includes('text/html') || contentType.includes('application/xhtml+xml')) {
-            response.destroy();
-            return false;
-        }
-
-        response.destroy();
-        return true;
+        return response.status >= 200 && response.status < 400;
     } catch (error) {
         return false;
     }
@@ -81,10 +65,10 @@ async function main() {
     const rawData = await fetchPlaylist();
     const channels = parseM3U(rawData);
     
-    console.log(`कुल ${channels.length} चैनल मिले। डीープ चेकिंग (Dead & Fake Links Filtering) शुरू ho rahi hai...`);
+    console.log(`कुल ${channels.length} चैनल मिले। चेकिंग शुरू हो रही है...`);
 
     let workingChannels = [];
-    const batchSize = 20; // Chote batches rakhte hain taaki accurate response mile
+    const batchSize = 40;
 
     for (let i = 0; i < channels.length; i += batchSize) {
         const batch = channels.slice(i, i + batchSize);
@@ -97,14 +81,15 @@ async function main() {
         results.forEach(ch => {
             if (ch) workingChannels.push(ch);
         });
-        console.log(`Progress: ${Math.min(i + batchSize, channels.length)}/${channels.length} checked...`);
     }
 
+    // 1. ग्रुप्स के हिसाब से चैनल गिनना ताकि पता चले किसमें 5 से कम हैं
     const groupCounts = {};
     workingChannels.forEach(ch => {
         groupCounts[ch.group] = (groupCounts[ch.group] || 0) + 1;
     });
 
+    // 2. जिन ग्रुप्स में 5 से कम चैनल हैं, उनका ग्रुप बदलकर 'others' कर देना
     workingChannels.forEach(ch => {
         if (groupCounts[ch.group] < 5) {
             ch.rawHeader = ch.rawHeader.replace(/group-title="[^"]*"/, 'group-title="🌎Worldwide - Others"');
@@ -112,6 +97,7 @@ async function main() {
         }
     });
 
+    // 3. प्रायोरिटी सेट करना: Entertainment, Movies, Kids, News, Music ऊपर रहेंगे
     const priorityOrder = ['entertainment', 'movies', 'kids', 'news', 'music'];
 
     workingChannels.sort((a, b) => {
@@ -127,13 +113,17 @@ async function main() {
         return a.group.localeCompare(b.group);
     });
 
+    // M3U फाइल तैयार करना
     let m3uContent = '#EXTM3U\n';
     workingChannels.forEach(ch => {
         m3uContent += `${ch.rawHeader}\n${ch.url}\n`;
     });
 
     fs.writeFileSync('working.m3u', m3uContent);
-    console.log(`\nकाम पूरा हुआ! FAKE aur DEAD links hata diye gaye hain. कुल ${workingChannels.length} 100% working channels save ho gaye hain.`);
+    console.log(`\nकाम पूरा हुआ! कुल ${workingChannels.length} चालू चैनल सही क्रम में सेव हो गए हैं।`);
 }
 
 main();
+
+
+Baut se chhannel chal te nhi jise ye bankar bhejta aise dikat aati bhut sare channel me isko fix kar ki aise type ke channel playlist add hi na ho or tujhe lagta link open ho jata to tujhe lagta workin he but aisa nhi vo chalra hi nhi he
