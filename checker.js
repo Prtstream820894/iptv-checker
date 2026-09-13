@@ -124,6 +124,3 @@ async function main() {
 }
 
 main();
-
-
-Baut se chhannel chal te nhi jise ye bankar bhejta aise dikat aati bhut sare channel me isko fix kar ki aise type ke channel playlist add hi na ho or tujhe lagta link open ho jata to tujhe lagta workin he but aisa nhi vo chalra hi nhi he
